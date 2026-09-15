@@ -464,8 +464,6 @@ export function ContractNew() {
 
     // 2. Crear contrato vinculado al contacto
     const title = `${selectedTemplate.name} - ${signerName}`;
-    const tokenExpires = new Date();
-    tokenExpires.setDate(tokenExpires.getDate() + 30);
 
     const { data, error } = await supabase
       .from("contracts")
@@ -481,7 +479,7 @@ export function ContractNew() {
         contract_data: { ...templateData },
         rendered_html: finalHtml,
         status: andSend ? "sent" : "draft",
-        token_expires_at: tokenExpires.toISOString(),
+        token_expires_at: null,
         sent_at: andSend ? new Date().toISOString() : null,
       })
       .select()
