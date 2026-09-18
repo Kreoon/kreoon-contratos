@@ -14,6 +14,11 @@ const navItems = [
 export function AppLayout() {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
+  // Este sistema comparte usuarios con el panel interno de Feria Effix: con
+  // sesion iniciada no alcanza, hay que operar contratos (ver la migracion
+  // 013). Las reglas de la base ya lo impiden, pero sin este chequeo quien no
+  // tiene acceso veria pantallas vacias o errores sin entender por que.
+  const [acceso, setAcceso] = useState<'verificando' | 'si' | 'no' | 'error'>('verificando')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const navigate = useNavigate()
 
@@ -24,11 +29,14 @@ export function AppLayout() {
       return
     }
 
-    supabase.auth.getUser().then(({ data: { user } }) => {
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (!user) {
         navigate('/login')
       } else {
         setUser(user)
+        // Falla cerrada: si no se puede verificar, no se asume acceso.
+        const { data, error } = await supabase.rpc('puede_operar_contratos')
+        setAcceso(error ? 'error' : data === true ? 'si' : 'no')
       }
       setLoading(false)
     })
@@ -44,6 +52,39 @@ export function AppLayout() {
   const handleLogout = async () => {
     await supabase.auth.signOut()
     navigate('/login')
+  }
+
+  if (!loading && isSupabaseConfigured && user && acceso !== 'si') {
+    return (
+      <div className="flex h-screen items-center justify-center bg-[hsl(var(--background))] p-6">
+        <div className="max-w-md space-y-4 rounded-lg border bg-[hsl(var(--card))] p-6 text-center">
+          <h1 className="text-lg font-bold text-[hsl(var(--foreground))]">
+            {acceso === 'error' ? 'No pudimos verificar tu acceso' : 'No tienes acceso al sistema de contratos'}
+          </h1>
+          <p className="text-sm text-[hsl(var(--muted-foreground))]">
+            {acceso === 'error'
+              ? 'Intenta de nuevo en unos segundos. Si sigue pasando, avisa a la gerencia.'
+              : `La cuenta ${user.email} no está habilitada para operar contratos. Si necesitas acceso, pídelo a la gerencia.`}
+          </p>
+          <div className="flex justify-center gap-3">
+            {acceso === 'error' && (
+              <button
+                onClick={() => window.location.reload()}
+                className="rounded-md border px-4 py-2 text-sm"
+              >
+                Reintentar
+              </button>
+            )}
+            <button
+              onClick={handleLogout}
+              className="rounded-md bg-[hsl(var(--primary))] px-4 py-2 text-sm text-[hsl(var(--primary-foreground))]"
+            >
+              Cerrar sesión
+            </button>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   if (loading) {
