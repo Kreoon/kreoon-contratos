@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { toast } from "sonner";
 import {
+  AlertTriangle,
   ArrowLeft,
   Copy,
   Download,
@@ -34,6 +35,11 @@ import {
   invokeFunction,
   isStoredPdf,
 } from "@/lib/pdf";
+
+// Espejo de MARCA_VALOR_PENDIENTE en feria_effix_interno/src/lib/contratos/ponentes.ts:
+// los contratos del modelo 1 de ponentes llegan con este texto en honorarios,
+// moneda y forma de pago. Si se cambia allá, hay que cambiarlo acá.
+const MARCA_VALOR_PENDIENTE = "[VALOR A COMPLETAR POR EL EQUIPO]";
 
 export function ContractDetail() {
   const { id } = useParams<{ id: string }>();
@@ -81,6 +87,12 @@ export function ContractDetail() {
     : "";
 
   const copyLink = () => {
+    // Copiar el enlace es otra forma de enviarlo: mismo bloqueo que el correo.
+    // "Abrir" sí queda libre, porque es la vista previa del equipo.
+    if (tieneValoresPendientes) {
+      toast.error("Completa los valores pendientes antes de compartir el link");
+      return;
+    }
     navigator.clipboard.writeText(signingUrl);
     toast.success("Link copiado al portapapeles");
   };
@@ -89,6 +101,12 @@ export function ContractDetail() {
   // sobre rendered_html al firmar, así que editar tras la firma la invalidaría.
   const canEdit =
     !!contract && ["draft", "sent", "viewed"].includes(contract.status);
+
+  // Se mira el HTML GUARDADO, no el que se está editando: es el que viaja al
+  // firmante. Mientras quede la marca, el contrato no se puede enviar.
+  const tieneValoresPendientes = !!contract?.rendered_html?.includes(
+    MARCA_VALOR_PENDIENTE,
+  );
 
   const startEditing = () => {
     if (!contract) return;
@@ -132,6 +150,13 @@ export function ContractDetail() {
 
   const sendSigningEmail = async () => {
     if (!contract) return;
+    if (tieneValoresPendientes) {
+      toast.error("El contrato tiene valores sin completar", {
+        description:
+          "Edítalo y reemplaza los valores pendientes antes de enviarlo.",
+      });
+      return;
+    }
     setSendingEmail(true);
     try {
       const { error } = await supabase.functions.invoke("send-contract", {
@@ -268,6 +293,28 @@ export function ContractDetail() {
         <ContractStatusBadge status={contract.status} />
       </div>
 
+      {tieneValoresPendientes && canEdit && (
+        <Card className="border-amber-300 bg-amber-50">
+          <CardContent className="flex items-start gap-3 py-4 text-sm">
+            <AlertTriangle
+              size={18}
+              className="mt-0.5 shrink-0 text-amber-700"
+            />
+            <div className="space-y-1">
+              <p className="font-medium text-amber-900">
+                Este contrato tiene valores sin completar: edítalo antes de
+                enviarlo.
+              </p>
+              <p className="text-amber-800">
+                Busca el texto «{MARCA_VALOR_PENDIENTE}» (honorarios, moneda y
+                forma de pago) y reemplázalo con los valores acordados. El envío
+                por email queda bloqueado hasta guardarlo.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Columna izquierda: info + acciones */}
         <div className="space-y-6">
@@ -339,7 +386,12 @@ export function ContractDetail() {
                   <Button
                     size="sm"
                     onClick={sendSigningEmail}
-                    disabled={sendingEmail}
+                    disabled={sendingEmail || tieneValoresPendientes}
+                    title={
+                      tieneValoresPendientes
+                        ? "Completa los valores pendientes antes de enviarlo"
+                        : undefined
+                    }
                   >
                     {sendingEmail ? (
                       <>
