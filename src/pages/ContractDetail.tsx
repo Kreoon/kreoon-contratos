@@ -28,7 +28,7 @@ import type {
   ContractStatus,
 } from "@/lib/types";
 import { injectContractBranding } from "@/lib/template-engine";
-import { getIssuer } from "@/lib/organizer";
+import { getIssuer, ISSUERS, type IssuerId } from "@/lib/organizer";
 import {
   downloadSignedPdf,
   generateAndStoreSignedPdf,
@@ -139,7 +139,89 @@ export function ContractDetail() {
     }
   };
 
+  // Cambiar la empresa emisora de un BORRADOR sin regenerarlo desde la
+  // plantilla: los borradores que llegan del espacio del ponente o del
+  // expositor se completan a mano (montos, forma de pago) y regenerar borraría
+  // eso. Las dos razones sociales solo difieren en nombre y NIT (ver
+  // organizer.ts), así que basta con reemplazar esos dos textos.
+  const cambiarEmisora = async (nuevoId: IssuerId) => {
+    if (!contract || contract.status !== "draft") return;
+    const actual = getIssuer(contract.issuer_id);
+    const nuevo = getIssuer(nuevoId);
+    if (actual.id === nuevo.id) return;
+    const html = contract.rendered_html || "";
+    // "FERIA EFFIX S.A.S." contiene "EFFIX S.A.S.": al buscar la corta hay
+    // que excluir la larga, o el cambio a FERIA EFFIX la duplicaría.
+    const escapar = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const reEmpresa = new RegExp(
+      nuevo.empresa.endsWith(actual.empresa) && nuevo.empresa !== actual.empresa
+        ? `(?<!${escapar(nuevo.empresa.slice(0, -actual.empresa.length))})${escapar(actual.empresa)}`
+        : escapar(actual.empresa),
+      "g",
+    );
+    const reNit = new RegExp(escapar(actual.nit), "g");
+    const veces = (html.match(reEmpresa) ?? []).length;
+    if (veces === 0) {
+      toast.error("No encontré la razón social en el texto", {
+        description: "Cámbiala a mano con Editar contenido.",
+      });
+      return;
+    }
+    if (
+      !window.confirm(
+        `Cambiar la emisora a ${nuevo.empresa} (NIT ${nuevo.nit})? Se reemplaza el nombre ${veces} ${veces === 1 ? "vez" : "veces"} y el NIT en el texto. Lo demás del contrato no cambia.`,
+      )
+    )
+      return;
+    const nuevoHtml = html
+      .replace(reEmpresa, nuevo.empresa)
+      .replace(reNit, nuevo.nit);
+    const nuevosDatos = {
+      ...(contract.contract_data ?? {}),
+      org_empresa: nuevo.empresa,
+      org_nit: nuevo.nit,
+    };
+    const { error } = await supabase
+      .from("contracts")
+      .update({
+        issuer_id: nuevo.id,
+        rendered_html: nuevoHtml,
+        contract_data: nuevosDatos,
+      })
+      .eq("id", contract.id)
+      .eq("status", "draft");
+    if (error) {
+      toast.error("No se pudo cambiar la emisora", {
+        description: error.message,
+      });
+      return;
+    }
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    // Con await: un insert de supabase-js sin await ni .then() no se ejecuta.
+    await supabase.from("audit_trail").insert({
+      contract_id: contract.id,
+      action: "issuer_changed",
+      actor_type: "admin",
+      actor_email: user?.email,
+      metadata: { de: actual.id, a: nuevo.id },
+    });
+    setContract((prev) =>
+      prev
+        ? {
+            ...prev,
+            issuer_id: nuevo.id,
+            rendered_html: nuevoHtml,
+            contract_data: nuevosDatos,
+          }
+        : null,
+    );
+    toast.success(`Emisora cambiada a ${nuevo.empresa}`);
+  };
+
   const actionLabels: Record<string, string> = {
+    issuer_changed: "Emisora cambiada",
     created: "Contrato creado",
     sent: "Contrato enviado",
     viewed: "Contrato visto por firmante",
@@ -358,6 +440,19 @@ export function ContractDetail() {
                 </span>
                 {getIssuer(contract.issuer_id).empresa} · NIT{" "}
                 {getIssuer(contract.issuer_id).nit}
+                {contract.status === "draft" &&
+                  ISSUERS.filter(
+                    (i) => i.id !== getIssuer(contract.issuer_id).id,
+                  ).map((i) => (
+                    <button
+                      key={i.id}
+                      type="button"
+                      onClick={() => cambiarEmisora(i.id)}
+                      className="mt-1 block text-xs text-[hsl(var(--primary))] underline underline-offset-2 hover:opacity-80"
+                    >
+                      Cambiar a {i.empresa}
+                    </button>
+                  ))}
               </div>
             </CardContent>
           </Card>

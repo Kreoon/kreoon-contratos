@@ -504,18 +504,20 @@ export function ContractNew() {
       });
     }
 
-    // Audit trail (no bloquear si falla)
+    // Audit trail (no bloquear si falla). Con await: un insert de supabase-js
+    // sin await ni .then() nunca sale, y por eso hasta 2026-09-19 la auditoría
+    // no tenía ningún "created" ni "sent" hechos desde acá.
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    supabase.from("audit_trail").insert({
+    await supabase.from("audit_trail").insert({
       contract_id: data.id,
       action: "created",
       actor_type: "admin",
       actor_email: user?.email,
     });
     if (andSend) {
-      supabase.from("audit_trail").insert({
+      await supabase.from("audit_trail").insert({
         contract_id: data.id,
         action: "sent",
         actor_type: "admin",
