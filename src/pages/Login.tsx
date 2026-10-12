@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -62,10 +62,13 @@ export function Login() {
               />
             </div>
           </CardContent>
-          <CardFooter>
+          <CardFooter className="flex-col gap-2">
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? 'Ingresando...' : 'Iniciar sesión'}
             </Button>
+            <Link to="/forgot-password" className="text-sm text-[hsl(var(--muted-foreground))] hover:underline">
+              ¿Olvidaste tu contraseña?
+            </Link>
           </CardFooter>
         </form>
       </Card>

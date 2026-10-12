@@ -13,11 +13,21 @@ import { ContactDetail } from "./pages/ContactDetail";
 import { SignPage } from "./pages/SignPage";
 import { SignComplete } from "./pages/SignComplete";
 import { Login } from "./pages/Login";
+import { ForgotPassword } from "./pages/ForgotPassword";
+import { ResetPassword } from "./pages/ResetPassword";
 
 export const router = createBrowserRouter([
   {
     path: "/login",
     element: <Login />,
+  },
+  {
+    path: "/forgot-password",
+    element: <ForgotPassword />,
+  },
+  {
+    path: "/reset-password",
+    element: <ResetPassword />,
   },
   // Rutas admin (protegidas)
   {
